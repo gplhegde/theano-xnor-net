@@ -31,11 +31,26 @@ class BinaryConvLayer(lasagne.layers.Conv2DLayer):
         Filter size of this layer. Leading dimension is = no of input feature maps.
     """
     
+    # Matrix containing scaling parameters(alpha) for weight matrices
+    # A[i] --> alpha for ith filter, Bi
+    self.A = np.zeros(num_filters, dtype=np.float32)
 
-    # overriding conv operation from Conv2DLayer implementation
+    super(BinaryConvLayer, self).__init__(incoming, num_filters, filter_size, **kwargs)
+
     def convolve(self, input, **kwargs):
     """ Binary convolution. Both inputs and weights are binary (+1 or -1)
+    This overrides convolve operation from Conv2DLayer implementation
     """
+    # compute the binary inputs H and the scaling matrix K
+    self.H = np.sign(input)
+    # np.sign(0) = 0, but we want that to be +1
+    self.H[np.where(self.H == 0.)] = 1.0 
+
+    # Compute the binarized filters are the scaling matrix
+
+    # TODO: Use XNOR ops for the convolution. As of now using Lasagne's convolution for
+    # functionality verification.
+    feat_maps = super(BinaryConvLayer, self).convolve(input, **kwargs)
 
 
 class BinaryDenseLayer(lasagne.layers.DenseLayer):
