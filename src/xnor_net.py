@@ -6,6 +6,7 @@ import lasagne
 import theano.tensor as T
 import time
 
+#TODO: The trainable parameters and computations should be converted from numpy operation into theano tensor symbolic operations.
 class BinaryActivLayer(lasagne.layers.Layer):
     """ Binary activation layer as described in XNOR-Net paper.
     This computes the scaling matrix K and the binary input I. Same notaions
@@ -32,9 +33,10 @@ class BinaryConvLayer(lasagne.layers.Conv2DLayer):
         """
     
         # Matrix containing scaling parameters(alpha) for weight matrices
-        # A[i] --> alpha for ith filter, Bi
-        self.A = np.zeros(num_filters, dtype=np.float32)
-
+        # alpha[i] --> alpha for ith filter, Bi
+        self.alpha = np.zeros(num_filters, dtype=np.float32)
+        # paper does not talk about how to handle convolution biases.
+        # hence neglecting biases
         super(BinaryConvLayer, self).__init__(incoming,
             num_filters, filter_size, b=None, nonlinearity=None, flip_filters=False, **kwargs)
 
@@ -49,7 +51,7 @@ class BinaryConvLayer(lasagne.layers.Conv2DLayer):
 
         # compute input scaling factor matrix K for every input in the batch
         # find sum of the absolute values across all channels for each input in the batch
-        assert(len(input.shape) == 4)
+        assert(input.ndim == 4)
         A = np.absolute(input)
         # mean across the channels/feature maps
         A = np.mean(A, axis=1)
@@ -68,16 +70,17 @@ class BinaryConvLayer(lasagne.layers.Conv2DLayer):
 
         # TODO: Use XNOR ops for the convolution. As of now using Lasagne's convolution for
         # functionality verification.
-        W_full_precision = self.W
+        # approx weight tensor
+        W_full_precision = self.B * self.alpha[:, np.newaxis, np.newaxis, np.newaxis] 
         self.W = self.B
         feat_maps = super(BinaryConvLayer, self).convolve(self.H, **kwargs)
+        # restore the approx full precision weight for gradiant computation
         self.W = W_full_precision
 
         # scale by K and alpha
-        for b in range(feat_maps.shape[0]):
-            feat_maps[b] = feat_maps[b] * self.K[b]
-        for f in range(self.num_filters):
-            feat_maps[:,f, :, :] = feat_maps[:, f, :, :] * self.alpha[f]
+        feat_maps = feat_maps * self.K[:,np.newaxis, :, :]
+
+        feat_maps = feat_maps * self.alpha[:, np.newaxis, np.newaxis, np.newaxis]
 
         return feat_maps
 
@@ -86,9 +89,33 @@ class BinaryDenseLayer(lasagne.layers.DenseLayer):
     this in a similar fashion as that of Conv Layer.
     """
 
-    
+    def __init__(self, incoming, num_units, **kwargs):
+       """
+       """
+       super(BinaryDenseLayer, self)__init__(incoming, num_units)
+
+       # scaling factor for the binary weights
+       self.alpha = np.zeros(num_units)
+      
+
+    def get_output_for(self, input, **kwargs):
+        """ Binary dense layer dot product computation
+        """
+        # binarize the input
+        self.H = np.sign(input)
+        # np.sign(0) = 0, but we want that to be +1
+        self.H[np.where(self.H == 0.)] = 1.0
+
+        # compute input scaling factor for all inputs in the batch. assuming input is a theano variable
+        self.beta = np.mean(np.absolute(input).flatten(2) axis=1)
+
+        # compute weight scaling factor.
+
+        # find the dot product
+        # scale the output by alpha and beta
 
 def xnor_net_find_gradiants(net, loss):
     """ Method to compute gradiants of all layers for back propagation.
     This is similar to the method in BinaryNet implementation.
     """
+    NotImplementedError
