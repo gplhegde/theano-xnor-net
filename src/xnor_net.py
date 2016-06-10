@@ -35,7 +35,8 @@ class BinaryConvLayer(lasagne.layers.Conv2DLayer):
         # A[i] --> alpha for ith filter, Bi
         self.A = np.zeros(num_filters, dtype=np.float32)
 
-        super(BinaryConvLayer, self).__init__(incoming, num_filters, filter_size, **kwargs)
+        super(BinaryConvLayer, self).__init__(incoming,
+            num_filters, filter_size, b=None, nonlinearity=None, flip_filters=False, **kwargs)
 
     def convolve(self, input, **kwargs):
         """ Binary convolution. Both inputs and weights are binary (+1 or -1)
@@ -57,13 +58,13 @@ class BinaryConvLayer(lasagne.layers.Conv2DLayer):
 
         # K will have scaling matrixces for each input in the batch.
         # K's shape = (batch_size, map_height, map_width)
-        K = theano.tensor.signal.conv.conv2d(A, k) 
+        self.K = theano.tensor.signal.conv.conv2d(A, k) 
 
         # Compute the binarized filters are the scaling matrix
         self.B = np.sign(self.W)
         self.B[np.where(self.B == 0.)] = 1.0
-        alpha = np.absolute(self.W).reshape(-1, self.W.shape[1]*self.W.shape[2]*self.W.shape[3])
-        alpha = np.mean(alpha, axis=1)
+        self.alpha = np.absolute(self.W).reshape(-1, self.W.shape[1]*self.W.shape[2]*self.W.shape[3])
+        self.alpha = np.mean(alpha, axis=1)
 
         # TODO: Use XNOR ops for the convolution. As of now using Lasagne's convolution for
         # functionality verification.
@@ -72,6 +73,13 @@ class BinaryConvLayer(lasagne.layers.Conv2DLayer):
         feat_maps = super(BinaryConvLayer, self).convolve(self.H, **kwargs)
         self.W = W_full_precision
 
+        # scale by K and alpha
+        for b in range(feat_maps.shape[0]):
+            feat_maps[b] = feat_maps[b] * self.K[b]
+        for f in range(self.num_filters):
+            feat_maps[:,f, :, :] = feat_maps[:, f, :, :] * self.alpha[f]
+
+        return feat_maps
 
 class BinaryDenseLayer(lasagne.layers.DenseLayer):
     """Binary version of fully connected layer. XNOR and bitcount ops are used for 
